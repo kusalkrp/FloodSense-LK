@@ -25,3 +25,7 @@ htmlcov/
 Thumbs.db
 .claude/
 CLAUDE.md
+
+frontend/node_modules/
+.frontend/.next/
+.frontend/.env.local 

@@ -7,6 +7,8 @@ NOTE: This service queries the FloodSense own DB (anomaly history etc),
 """
 
 import asyncio
+from datetime import datetime
+
 import structlog
 
 from floodsense_lk.db import timescale
@@ -108,3 +110,72 @@ async def compute_baseline_from_history(
         round(stddev_rate, 4) if stddev_rate is not None else None,
         n,
     )
+
+
+async def bootstrap_all_baselines(mcp_base_url: str) -> dict:
+    """One-time bootstrap: pull 7 days of MCP history per station and compute baselines.
+
+    Designed to be triggered once via the admin API when the station_baselines
+    table is empty and the weekly recompute job hasn't run yet.
+    """
+    from floodsense_lk.mcp.client import safe_call
+
+    # list_stations() returns {"stations_by_basin": {basin: [names]}, ...}
+    station_list_data = await safe_call(mcp_base_url, "list_stations", {})
+    if not station_list_data or "stations_by_basin" not in station_list_data:
+        return {"error": "could not fetch station list from MCP"}
+
+    all_station_names: list[str] = []
+    for names in station_list_data["stations_by_basin"].values():
+        all_station_names.extend(names)
+
+    baselines_computed = 0
+    skipped = 0
+
+    for station_name in all_station_names:
+        history_data = await safe_call(
+            mcp_base_url,
+            "get_station_history",
+            {"station_name": station_name, "hours": 168},
+        )
+        if not history_data:
+            logger.warning("bootstrap_no_history", station=station_name)
+            skipped += 1
+            continue
+
+        readings_raw = history_data.get("readings", [])
+        if not readings_raw:
+            skipped += 1
+            continue
+
+        # Group readings by ISO week; normalise MCP key names
+        week_groups: dict[int, list[dict]] = {}
+        for r in readings_raw:
+            ts = r.get("measured_at") or r.get("timestamp")
+            if not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+            except (ValueError, TypeError):
+                continue
+            week = dt.isocalendar().week
+            week_groups.setdefault(week, []).append({
+                "water_level_m": r.get("water_level_m") or r.get("level_m"),
+                "rate_of_rise": r.get("rate_of_rise_m_per_hr") or r.get("rate_of_rise"),
+            })
+
+        for week, group in week_groups.items():
+            await compute_baseline_from_history(station_name, week, group)
+            baselines_computed += 1
+
+    logger.info(
+        "baseline_bootstrap_complete",
+        stations=len(all_station_names),
+        baselines=baselines_computed,
+        skipped=skipped,
+    )
+    return {
+        "stations_processed": len(all_station_names),
+        "baselines_computed": baselines_computed,
+        "skipped": skipped,
+    }

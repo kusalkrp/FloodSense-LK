@@ -40,7 +40,10 @@ async def _persist_run(state: FloodSenseState, summary: str, started_at: str) ->
     n_rising = len(state["rising_stations"])
     n_anomalies = len(state["anomalies_detected"])
     n_sent = len(state["alerts_sent"])
-    has_errors = bool(state["errors"])
+    errors = state["errors"]
+    # stale_data warnings are informational — only hard errors (MCP failures, DB errors) count
+    hard_errors = [e for e in errors if not e.startswith("stale_data:")]
+    has_hard_errors = bool(hard_errors)
 
     # Determine routing decision label
     if n_anomalies == 0:
@@ -50,7 +53,8 @@ async def _persist_run(state: FloodSenseState, summary: str, started_at: str) ->
     else:
         routing = "anomaly_detected_no_alerts"
 
-    status = "FAILED" if has_errors and n_anomalies == 0 else "COMPLETED"
+    # FAILED only when no stations were checked (MCP unreachable) or hard errors with no data
+    status = "FAILED" if (len(state["station_snapshots"]) == 0 or has_hard_errors) else "COMPLETED"
 
     now_sl = datetime.now(_SL_TZ)
 
@@ -80,7 +84,7 @@ async def _persist_run(state: FloodSenseState, summary: str, started_at: str) ->
         len(state["alert_stations"]),
         n_anomalies,
         n_sent,
-        "; ".join(state["errors"]) if state["errors"] else None,
+        "; ".join(hard_errors) if hard_errors else None,
     )
 
 
@@ -102,17 +106,54 @@ async def _update_redis_dashboard(state: FloodSenseState) -> None:
         _DASHBOARD_TTL,
     )
 
-    if state["anomalies_detected"]:
-        await redis_client.set(
-            "floodsense:anomalies:active",
-            json.dumps(state["anomalies_detected"]),
-            _DASHBOARD_TTL,
-        )
+    # Always write anomalies (write empty list on calm run to clear stale data)
+    await redis_client.set(
+        "floodsense:anomalies:active",
+        json.dumps(state["anomalies_detected"]),
+        _DASHBOARD_TTL,
+    )
+
+    # Per-station current status for the map
+    station_summary = [
+        {
+            "name": s.get("station") or s.get("station_name", ""),
+            "basin": s.get("basin") or s.get("basin_name", ""),
+            "level_m": s.get("water_level_m"),
+            "alert_level": s.get("alert_level", "NORMAL"),
+            "rate": round(float(s.get("rate_of_rise_m_per_hr") or s.get("rate_of_rise") or 0), 4),
+            "pct": s.get("pct_of_alert_threshold"),
+            "trend": s.get("trend", "STABLE"),
+            "stale": s.get("is_stale", False),
+        }
+        for s in state["station_snapshots"]
+    ]
+    await redis_client.set(
+        "floodsense:stations:current",
+        json.dumps(station_summary),
+        _DASHBOARD_TTL,
+    )
 
     await redis_client.set_no_ttl(
         "floodsense:run:last_summary",
         json.dumps({"summary": state["report_summary"], "run_id": state["run_id"]}),
     )
+
+
+async def _write_risk_scores(risk_assessments: list[dict]) -> None:
+    """Update anomaly_events.risk_score for each scored anomaly."""
+    for assessment in risk_assessments:
+        event_id = assessment.get("event_id")
+        risk_score = assessment.get("risk_score")
+        if event_id is None or risk_score is None:
+            continue
+        try:
+            await timescale.execute(
+                "UPDATE anomaly_events SET risk_score = $1 WHERE id = $2",
+                int(risk_score),
+                int(event_id),
+            )
+        except Exception as exc:
+            logger.warning("risk_score_writeback_failed", event_id=event_id, error=str(exc))
 
 
 async def report_agent_node(state: FloodSenseState) -> FloodSenseState:
@@ -124,6 +165,13 @@ async def report_agent_node(state: FloodSenseState) -> FloodSenseState:
         logger.info("pipeline_run_persisted", run_id=state["run_id"])
     except Exception as exc:
         logger.warning("pipeline_run_persist_failed", run_id=state["run_id"], error=str(exc))
+
+    if state.get("risk_assessments"):
+        try:
+            await _write_risk_scores(state["risk_assessments"])
+            logger.info("risk_scores_written", count=len(state["risk_assessments"]))
+        except Exception as exc:
+            logger.warning("risk_scores_write_failed", error=str(exc))
 
     try:
         await _update_redis_dashboard(state)

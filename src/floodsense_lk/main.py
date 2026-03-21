@@ -88,7 +88,7 @@ app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
@@ -109,6 +109,21 @@ app.include_router(dashboard.router)
 @app.get("/health", tags=["system"])
 async def health() -> dict:
     return {"status": "ok", "service": "floodsense-lk"}
+
+
+# Serve React SPA — must be last
+_FRONTEND_DIST = pathlib.Path(__file__).parent.parent.parent / "frontend" / "dist"
+if _FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str = "") -> JSONResponse:
+        index = _FRONTEND_DIST / "index.html"
+        if index.exists():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(index))
+        return JSONResponse({"error": "frontend not built"}, status_code=404)
 
 
 # ── Entrypoint ─────────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ from floodsense_lk.mcp.client import safe_call
 
 logger = structlog.get_logger(__name__)
 
-_STALE_THRESHOLD_MINUTES = 45
+_STALE_THRESHOLD_MINUTES = 70  # MCP polls every 30 min; flag after 2+ missed cycles
 
 
 def _station_name(s: dict) -> str:

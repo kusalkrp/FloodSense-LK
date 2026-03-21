@@ -84,8 +84,36 @@ def _upstream_status(corridor_warnings: list[dict], station_name: str) -> str:
     return "; ".join(parts)
 
 
+_DEDUP_WINDOW_HOURS = 2  # suppress re-insertion of the same anomaly type within this window
+
+
 async def _persist_anomaly(station_name: str, basin_name: str, data: dict, run_id: str) -> int | None:
+    anomaly_type = data.get("anomaly_type", "LEVEL_ANOMALY")
     try:
+        # Dedup: skip if identical (station, type) already exists within the last N hours
+        existing = await timescale.fetchrow(
+            """
+            SELECT id FROM anomaly_events
+            WHERE station_name = $1
+              AND anomaly_type = $2
+              AND detected_at > NOW() - ($3 || ' hours')::INTERVAL
+              AND false_positive = FALSE
+            ORDER BY detected_at DESC
+            LIMIT 1
+            """,
+            station_name,
+            anomaly_type,
+            str(_DEDUP_WINDOW_HOURS),
+        )
+        if existing:
+            logger.debug(
+                "anomaly_deduped",
+                station=station_name,
+                type=anomaly_type,
+                existing_id=existing["id"],
+            )
+            return None
+
         row = await timescale.fetchrow(
             """
             INSERT INTO anomaly_events
@@ -98,7 +126,7 @@ async def _persist_anomaly(station_name: str, basin_name: str, data: dict, run_i
             """,
             station_name,
             basin_name,
-            data.get("anomaly_type", "LEVEL_ANOMALY"),
+            anomaly_type,
             data.get("severity", "LOW"),
             float(data.get("z_score") or 0),
             float(data.get("rate_spike_ratio") or 0),

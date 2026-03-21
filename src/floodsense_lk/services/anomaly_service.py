@@ -52,8 +52,8 @@ async def compute_z_score(
     baseline = await get_baseline(station_name, week_of_year)
     if not baseline:
         return 0.0
-    stddev = baseline.get("stddev_level_m") or 0.0
-    avg = baseline.get("avg_level_m") or 0.0
+    stddev = float(baseline.get("stddev_level_m") or 0.0)
+    avg = float(baseline.get("avg_level_m") or 0.0)
     if stddev == 0.0:
         return 0.0
     return round((current_level_m - avg) / stddev, 3)
@@ -102,7 +102,7 @@ async def detect_rate_spike(
     if not baseline:
         return None
 
-    baseline_rate = baseline.get("avg_rate_m_per_hr") or 0.0
+    baseline_rate = float(baseline.get("avg_rate_m_per_hr") or 0.0)
     if baseline_rate <= 0:
         return None
 
@@ -192,7 +192,7 @@ async def run_all_detectors(
         signals.append(rate_sig)
 
     compound = compute_basin_compound_score(basin, rising_stations)
-    if compound > 0:
+    if compound >= 3.0:  # suppress noise — score < 3 is a single slow-rising station
         signals.append(AnomalySignal(
             anomaly_type="COMPOUND_BASIN",
             severity="HIGH" if compound >= 7 else "MEDIUM" if compound >= 4 else "LOW",

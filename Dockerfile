@@ -1,20 +1,28 @@
+# ── Stage 1: Build React frontend ─────────────────────────────────────────────
+FROM node:20-slim AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --frozen-lockfile 2>/dev/null || npm install
+COPY frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Python runtime ────────────────────────────────────────────────────
 FROM python:3.11-slim
 
-# Non-root user — never run as root in production
 RUN groupadd -r floodsense && useradd -r -g floodsense floodsense
 
 WORKDIR /app
 
-# Install deps first (layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source and tests
 COPY src/ ./src/
 COPY tests/ ./tests/
 COPY pytest.ini .
 
-# Switch to non-root
+# Copy built React app
+COPY --from=frontend-builder /frontend/dist ./frontend/dist
+
 USER floodsense
 
 ENV PYTHONPATH=/app/src

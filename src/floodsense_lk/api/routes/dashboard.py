@@ -34,10 +34,10 @@ async def dashboard(request: Request):
 
 
 @router.get("/dashboard/alerts", response_class=HTMLResponse)
-async def alerts_page(request: Request, basin: str = "", severity: str = ""):
-    filters = ["false_positive = FALSE"]
-    params: list = []
-    idx = 1
+async def alerts_page(request: Request, basin: str = "", severity: str = "", hours: int = 24):
+    filters = ["false_positive = FALSE", "detected_at > NOW() - ($1 || ' hours')::INTERVAL"]
+    params: list = [str(hours)]
+    idx = 2
     if basin:
         filters.append(f"basin_name ILIKE ${idx}")
         params.append(f"%{basin}%")
@@ -58,6 +58,7 @@ async def alerts_page(request: Request, basin: str = "", severity: str = ""):
         "alerts": [dict(r) for r in rows],
         "basin": basin,
         "severity": severity,
+        "hours": hours,
     })
 
 
@@ -73,6 +74,18 @@ async def system_page(request: Request):
     anomaly_row = await timescale.fetchrow(
         "SELECT COUNT(*) AS n FROM anomaly_events WHERE detected_at > NOW() - INTERVAL '24 hours' AND false_positive = FALSE"
     )
+    # Pull stale station list from Redis dashboard snapshot (not DB error column)
+    stale_stations: list[str] = []
+    dashboard_raw = await redis_client.get("floodsense:dashboard:current")
+    if dashboard_raw:
+        dash = json.loads(dashboard_raw)
+        for e in dash.get("errors", []):
+            if e.startswith("stale_data:"):
+                import ast
+                try:
+                    stale_stations = ast.literal_eval(e.split("stale_data:", 1)[1].strip())
+                except Exception:
+                    pass
     return templates.TemplateResponse("system.html", {
         "request": request,
         "active": "system",
@@ -80,4 +93,5 @@ async def system_page(request: Request):
         "last_run": dict(last_run_row) if last_run_row else None,
         "total_runs": int(total_row["n"]) if total_row else 0,
         "anomaly_count_24h": int(anomaly_row["n"]) if anomaly_row else 0,
+        "stale_stations": stale_stations,
     })

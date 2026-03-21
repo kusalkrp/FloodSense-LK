@@ -13,6 +13,7 @@ from floodsense_lk.config.settings import settings
 from floodsense_lk.core.exceptions import AdminAuthError
 from floodsense_lk.core.security import verify_admin_key
 from floodsense_lk.db import timescale
+from floodsense_lk.services.baseline_service import bootstrap_all_baselines
 from floodsense_lk.services.scheduler_service import run_pipeline
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -44,6 +45,14 @@ async def mark_false_positive(
     if not row:
         raise HTTPException(status_code=404, detail="anomaly_not_found")
     return {"status": "marked_false_positive", "id": anomaly_id}
+
+
+@router.post("/bootstrap-baselines")
+async def bootstrap_baselines(_: None = Depends(_require_admin)) -> dict:
+    """One-time baseline bootstrap — pulls 7 days of MCP history for every station
+    and populates station_baselines so z-score detection works immediately."""
+    result = await bootstrap_all_baselines(settings.mcp_server_url)
+    return result
 
 
 @router.get("/runs")

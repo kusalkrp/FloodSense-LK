@@ -13,12 +13,13 @@ _VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
 async def get_alerts(
     basin: str | None = Query(None),
     severity: str | None = Query(None),
+    hours: int = Query(24, ge=1, le=720),
     limit: int = Query(50, ge=1, le=200),
 ) -> dict:
-    """Recent anomaly events, optionally filtered by basin and/or severity."""
-    filters = ["false_positive = FALSE"]
-    params: list = []
-    idx = 1
+    """Recent anomaly events, optionally filtered by basin, severity, and time window."""
+    filters = ["false_positive = FALSE", f"detected_at > NOW() - ($1 || ' hours')::INTERVAL"]
+    params: list = [str(hours)]
+    idx = 2
 
     if basin:
         filters.append(f"basin_name ILIKE ${idx}")
