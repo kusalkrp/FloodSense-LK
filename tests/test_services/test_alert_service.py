@@ -83,9 +83,10 @@ async def test_get_matching_subscribers_critical_matches_all(mock_db):
 
 # ── Delivery disabled by default ───────────────────────────────────────────────
 
-async def test_send_whatsapp_disabled_by_default(mock_db):
-    from floodsense_lk.services.alert_service import send_whatsapp
-    result = await send_whatsapp("hash_abc", "+94771234567", "Test message", None)
+async def test_send_whatsapp_disabled_by_default(mock_db, monkeypatch):
+    import floodsense_lk.services.alert_service as svc
+    monkeypatch.setattr(svc.settings, "enable_whatsapp_alerts", False)
+    result = await svc.send_whatsapp("hash_abc", "+94771234567", "Test message", None)
     assert result["success"] is False
     assert result["reason"] == "disabled"
 

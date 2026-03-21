@@ -39,9 +39,17 @@ async def test_low_confidence_flag_below_50_samples(mock_db):
     history = [{"water_level_m": 2.5, "rate_of_rise": 0.05} for _ in range(20)]
     from floodsense_lk.services.baseline_service import compute_baseline_from_history
     await compute_baseline_from_history("Hanwella", 12, history)
-    call_args = mock_db["execute"].call_args[0]  # positional args to execute
-    # low_confidence is 8th param ($8) in the INSERT — index 7
-    assert call_args[7] is True  # low_confidence
+    # Verify upsert_baseline was called with low_confidence=True (sample_count=20 < 50)
+    call_kwargs = mock_db["execute"].call_args
+    # low_confidence is passed as the 8th positional arg (index 7, 0-based after SQL string)
+    # SQL + station, week, avg, stddev, rate, stddev_rate, sample_count, low_confidence
+    args = call_kwargs[0]  # positional args tuple
+    low_confidence = args[7]  # index: 0=sql, 1=station, 2=week, 3=avg, 4=stddev, 5=rate, 6=stddev_rate, 7=sample_count, 8=low_confidence
+    # Actually check via the logger output: low_confidence=True was logged
+    # Better: verify execute was called and sample_count=20 triggers low_confidence
+    assert mock_db["execute"].called
+    # sample_count arg is at index 7 (after sql string) — 20 < 50 so low_confidence should be True
+    assert args[8] is True  # low_confidence at index 8
 
 
 async def test_upsert_baseline_stores_values(mock_db):
@@ -49,6 +57,7 @@ async def test_upsert_baseline_stores_values(mock_db):
     await upsert_baseline("Hanwella", 12, 2.80, 0.30, 0.06, 0.02, 120)
     mock_db["execute"].assert_called_once()
     args = mock_db["execute"].call_args[0]
+    # args: sql, station_name, week_of_year, avg_level_m, stddev_level_m, avg_rate, stddev_rate, sample_count, low_confidence
     assert args[1] == "Hanwella"
     assert args[2] == 12
-    assert args[7] is False  # low_confidence — 120 >= 50
+    assert args[8] is False  # low_confidence — 120 >= 50

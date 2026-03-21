@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Security
     alert_salt: str = Field(default="")
     admin_api_key: str = Field(default="")
+    phone_encryption_key: str = Field(default="")
 
     # Pipeline
     pipeline_interval_seconds: int = Field(default=1800)
@@ -62,6 +63,8 @@ class Settings(BaseSettings):
             _log.warning("SECURITY WARNING: ALERT_SALT not set — subscriber hashing is insecure")
         if not self.admin_api_key:
             _log.warning("SECURITY WARNING: ADMIN_API_KEY not set — /admin routes unprotected")
+        if not self.phone_encryption_key:
+            _log.warning("SECURITY WARNING: PHONE_ENCRYPTION_KEY not set — phone encryption will fail")
         return self
 
 

@@ -159,13 +159,16 @@ async def send_sms(
 # ── Subscriber filtering ───────────────────────────────────────────────────────
 
 async def get_matching_subscribers(basin_name: str, station_name: str, severity: str) -> list[dict]:
-    """Return active verified subscribers interested in this basin/station/severity."""
+    """Return active verified subscribers interested in this basin/station/severity.
+
+    encrypted_phone is included so the alert agent can decrypt it at delivery time.
+    """
     severity_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     severity_idx = severity_order.index(severity) if severity in severity_order else 2
 
     rows = await timescale.fetch(
         """
-        SELECT id, phone_hash, email_hash, basins, stations,
+        SELECT id, phone_hash, email_hash, encrypted_phone, basins, stations,
                min_severity, channels, language
         FROM subscribers
         WHERE active = TRUE AND verified = TRUE

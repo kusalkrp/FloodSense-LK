@@ -21,6 +21,7 @@ from floodsense_lk.services.alert_service import (
     send_whatsapp,
     send_sms,
 )
+from floodsense_lk.services.subscriber_service import resolve_phone
 
 logger = structlog.get_logger(__name__)
 
@@ -148,16 +149,15 @@ async def alert_agent_node(state: FloodSenseState) -> FloodSenseState:
             }
             alerts_to_send.append(alert_record)
 
+            # Decrypt phone for Twilio delivery — never log this value
+            phone_number = resolve_phone(sub.get("encrypted_phone")) or ""
+
             # Delivery — WhatsApp first, SMS fallback
-            # Note: actual phone number is NOT stored — subscribers table only has hash.
-            # In production, a separate lookup service would resolve hash→number via
-            # an encrypted store outside this DB. For now we skip real delivery when
-            # enable_whatsapp_alerts=False (default in dev).
             delivered = False
             if "WHATSAPP" in channels:
                 result = await send_whatsapp(
                     recipient_hash=recipient_hash,
-                    phone_number="",        # resolved by delivery service in prod
+                    phone_number=phone_number,
                     message=messages["whatsapp_message"],
                     anomaly_event_id=event_id,
                     language=language,
@@ -167,7 +167,7 @@ async def alert_agent_node(state: FloodSenseState) -> FloodSenseState:
             if not delivered and "SMS" in channels:
                 result = await send_sms(
                     recipient_hash=recipient_hash,
-                    phone_number="",
+                    phone_number=phone_number,
                     message=messages["sms_message"],
                     anomaly_event_id=event_id,
                     language=language,
