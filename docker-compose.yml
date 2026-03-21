@@ -42,6 +42,7 @@ services:
     environment:
       POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
+      MCP_SERVER_URL: http://host.docker.internal:8765
     ports:
       - "8002:8002"
     depends_on:

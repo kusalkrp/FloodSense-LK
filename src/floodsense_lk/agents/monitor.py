@@ -18,6 +18,11 @@ logger = structlog.get_logger(__name__)
 _STALE_THRESHOLD_MINUTES = 45
 
 
+def _station_name(s: dict) -> str:
+    """MCP responses use 'station' key; fall back to 'station_name' for compat."""
+    return s.get("station") or s.get("station_name", "unknown")
+
+
 def _flag_stale(snapshots: list[dict]) -> tuple[list[dict], list[str]]:
     """Mark stale stations and collect their names."""
     stale = []
@@ -25,7 +30,7 @@ def _flag_stale(snapshots: list[dict]) -> tuple[list[dict], list[str]]:
         age = s.get("data_age_minutes", 0) or 0
         s["is_stale"] = age > _STALE_THRESHOLD_MINUTES
         if s["is_stale"]:
-            stale.append(s.get("station_name", "unknown"))
+            stale.append(_station_name(s))
     return snapshots, stale
 
 
@@ -73,18 +78,21 @@ async def monitor_node(state: FloodSenseState) -> FloodSenseState:
         errors.append("mcp_get_alert_stations_failed")
 
     # Attach corridor data to relevant snapshots
+    # MCP corridor response uses key "corridor" (not "stations")
     if corridor and isinstance(corridor, dict):
-        corridor_map = {s["station_name"]: s for s in corridor.get("stations", [])}
+        corridor_stations = corridor.get("corridor") or corridor.get("stations", [])
+        corridor_map = {_station_name(s): s for s in corridor_stations}
         for snap in station_snapshots:
-            name = snap.get("station_name", "")
+            name = _station_name(snap)
             if name in corridor_map:
                 snap["kelani_corridor"] = corridor_map[name]
 
     # Attach basin summary
+    # MCP uses "basin" key, not "basin_name"
     if basins and isinstance(basins, dict):
-        basin_map = {b["basin_name"]: b for b in basins.get("basins", [])}
+        basin_map = {b.get("basin") or b.get("basin_name", ""): b for b in basins.get("basins", [])}
         for snap in station_snapshots:
-            basin = snap.get("basin_name", "")
+            basin = snap.get("basin") or snap.get("basin_name", "")
             if basin in basin_map:
                 snap["basin_summary"] = basin_map[basin]
 

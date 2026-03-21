@@ -126,9 +126,13 @@ def detect_upstream_propagation(corridor_stations: list[dict]) -> list[dict]:
 
     corridor_stations: list of dicts with station_name and rate_of_rise from MCP.
     """
-    rate_map = {s["station_name"]: s.get("rate_of_rise", 0.0) or 0.0
-                for s in corridor_stations
-                if s.get("station_name") in _KELANI_SET}
+    rate_map = {
+        (s.get("station") or s.get("station_name", "")): (
+            s.get("rate_of_rise_m_per_hr") or s.get("rate_of_rise") or 0.0
+        )
+        for s in corridor_stations
+        if (s.get("station") or s.get("station_name", "")) in _KELANI_SET
+    }
 
     warnings = []
     for i, (station, eta_to_colombo) in enumerate(KELANI_CORRIDOR[:-1]):
@@ -152,13 +156,13 @@ def detect_upstream_propagation(corridor_stations: list[dict]) -> list[dict]:
 def compute_basin_compound_score(basin_name: str, rising_stations: list[dict]) -> float:
     basin_rising = [
         s for s in rising_stations
-        if s.get("basin_name", "").lower() == basin_name.lower()
+        if (s.get("basin") or s.get("basin_name", "")).lower() == basin_name.lower()
     ]
     n = len(basin_rising)
     if n == 0:
         return 0.0
     multiplier = 1.0 if n < 2 else 1.5 if n < 3 else 2.0
-    avg_rate = sum(s.get("rate_of_rise", 0.0) or 0.0 for s in basin_rising) / n
+    avg_rate = sum(s.get("rate_of_rise_m_per_hr") or s.get("rate_of_rise") or 0.0 for s in basin_rising) / n
     return round(min(avg_rate * multiplier * 10, 10.0), 2)
 
 
@@ -170,10 +174,10 @@ async def run_all_detectors(
     rising_stations: list[dict],
     kelani_corridor_stations: list[dict],
 ) -> list[AnomalySignal]:
-    name = station.get("station_name", "")
+    name = station.get("station") or station.get("station_name", "")
     level = station.get("water_level_m") or station.get("level_m") or 0.0
-    rate = station.get("rate_of_rise") or 0.0
-    basin = station.get("basin_name", "")
+    rate = station.get("rate_of_rise_m_per_hr") or station.get("rate_of_rise") or 0.0
+    basin = station.get("basin") or station.get("basin_name", "")
 
     signals: list[AnomalySignal] = []
 

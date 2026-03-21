@@ -123,10 +123,11 @@ async def _analyse_station(
     run_id: str,
     llm: ChatGoogleGenerativeAI,
 ) -> dict | None:
-    name = station.get("station_name", "")
-    basin = station.get("basin_name", "")
+    # MCP uses "station"/"basin" keys; internal anomaly dicts use "station_name"/"basin_name"
+    name = station.get("station") or station.get("station_name", "")
+    basin = station.get("basin") or station.get("basin_name", "")
     level = float(station.get("water_level_m") or station.get("level_m") or 0)
-    rate = float(station.get("rate_of_rise") or 0)
+    rate = float(station.get("rate_of_rise_m_per_hr") or station.get("rate_of_rise") or 0)
     base_url = settings.mcp_server_url
 
     # Fetch MCP history in parallel
@@ -212,7 +213,7 @@ async def anomaly_node(state: FloodSenseState) -> FloodSenseState:
     seen: set[str] = set()
     candidates: list[dict] = []
     for s in state["rising_stations"] + state["alert_stations"]:
-        name = s.get("station_name", "")
+        name = s.get("station") or s.get("station_name", "")
         if name and name not in seen:
             seen.add(name)
             candidates.append(s)
@@ -224,7 +225,7 @@ async def anomaly_node(state: FloodSenseState) -> FloodSenseState:
     _kelani_names = {n for n, _ in KELANI_CORRIDOR}
     kelani_stations = [
         s for s in state["station_snapshots"]
-        if s.get("station_name") in _kelani_names
+        if (s.get("station") or s.get("station_name")) in _kelani_names
     ]
     corridor_warnings = detect_upstream_propagation(kelani_stations)
 
@@ -245,7 +246,7 @@ async def anomaly_node(state: FloodSenseState) -> FloodSenseState:
             if result:
                 anomalies_detected.append(result)
         except Exception as exc:
-            name = station.get("station_name", "unknown")
+            name = station.get("station") or station.get("station_name", "unknown")
             logger.warning("anomaly_station_failed", station=name, error=str(exc))
             errors.append(f"anomaly_failed:{name}: {exc}")
 
