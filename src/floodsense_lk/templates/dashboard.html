@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FloodSense LK{% endblock %}
+
+{% block head %}
+<style>
+  #map { height: 420px; border-radius: 8px; border: 1px solid var(--border); }
+  .anomaly-banner {
+    background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 0.75rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .anomaly-banner .severity { font-weight: 700; min-width: 70px; }
+  .intensity-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;
+  }
+  .intensity-STANDARD  { background: rgba(16,185,129,0.15); color: #10b981; }
+  .intensity-ELEVATED  { background: rgba(245,158,11,0.15);  color: #f59e0b; }
+  .intensity-HIGH_ALERT{ background: rgba(239,68,68,0.2);   color: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+  <div>
+    <h1 style="font-size:1.4rem; font-weight:700;">Sri Lanka River Monitor</h1>
+    <p style="color:var(--muted); font-size:0.85rem;">{{ dashboard.updated_at or 'No data yet' }}</p>
+  </div>
+  <span class="intensity-badge intensity-{{ dashboard.monitoring_intensity or 'STANDARD' }}">
+    ● {{ dashboard.monitoring_intensity or 'STANDARD' }}
+  </span>
+</div>
+
+<!-- Stat cards -->
+<div class="grid-3">
+  <div class="card">
+    <div class="stat-value">{{ dashboard.stations_total or 0 }}</div>
+    <div class="stat-label">Stations Monitored</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--amber)">{{ dashboard.stations_rising or 0 }}</div>
+    <div class="stat-label">Rising Now</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--red)">{{ dashboard.stations_alert or 0 }}</div>
+    <div class="stat-label">At Alert Level</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--accent)">{{ dashboard.anomalies_active or 0 }}</div>
+    <div class="stat-label">Active Anomalies</div>
+  </div>
+</div>
+
+<!-- Active anomaly banners -->
+{% if active_anomalies %}
+<div class="section">
+  <h2>Active Anomalies</h2>
+  {% for a in active_anomalies %}
+  <div class="anomaly-banner">
+    <span class="severity badge badge-{{ a.severity|lower }}">{{ a.severity }}</span>
+    <div>
+      <strong>{{ a.station_name }}</strong> — {{ a.basin_name }}
+      <div style="font-size:0.8rem; color:var(--muted);">{{ a.explanation }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Map -->
+<div class="card section">
+  <h2>Station Map</h2>
+  <div id="map"></div>
+  <p class="refresh-note">Auto-refreshes every 5 minutes</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPew=" crossorigin=""></script>
+<script>
+const map = L.map('map').setView([7.8731, 80.7718], 7);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '©OpenStreetMap ©CartoDB', maxZoom: 18
+}).addTo(map);
+
+// Station locations (major stations — approximate coordinates)
+const stations = [
+  { name: "Norwood",          lat: 6.836, lng: 80.615, basin: "Kelani Ganga" },
+  { name: "Kithulgala",       lat: 6.989, lng: 80.413, basin: "Kelani Ganga" },
+  { name: "Deraniyagala",     lat: 6.924, lng: 80.337, basin: "Kelani Ganga" },
+  { name: "Glencourse",       lat: 6.977, lng: 80.173, basin: "Kelani Ganga" },
+  { name: "Holombuwa",        lat: 7.054, lng: 80.102, basin: "Kelani Ganga" },
+  { name: "Hanwella",         lat: 6.907, lng: 80.083, basin: "Kelani Ganga" },
+  { name: "Nagalagam Street", lat: 6.930, lng: 79.865, basin: "Kelani Ganga" },
+  { name: "Putupaula",        lat: 6.725, lng: 80.330, basin: "Kalu Ganga"   },
+  { name: "Ratnapura",        lat: 6.680, lng: 80.403, basin: "Kalu Ganga"   },
+  { name: "Ellagawa",         lat: 6.618, lng: 80.283, basin: "Kalu Ganga"   },
+  { name: "Magura",           lat: 6.468, lng: 80.520, basin: "Nilwala Ganga"},
+  { name: "Pitabeddara",      lat: 6.048, lng: 80.540, basin: "Nilwala Ganga"},
+  { name: "Weragoda",         lat: 6.017, lng: 80.447, basin: "Gin Ganga"    },
+  { name: "Belihuloya",       lat: 6.743, lng: 80.732, basin: "Walawe Ganga" },
+  { name: "Handapanagala",    lat: 6.287, lng: 81.065, basin: "Walawe Ganga" },
+  { name: "Peradeniya",       lat: 7.268, lng: 80.600, basin: "Mahaweli Ganga"},
+  { name: "Manampitiya",      lat: 7.897, lng: 81.007, basin: "Mahaweli Ganga"},
+  { name: "Randenigala",      lat: 7.325, lng: 80.873, basin: "Mahaweli Ganga"},
+];
+
+const activeNames = new Set({{ active_station_names | tojson }});
+stations.forEach(s => {
+  const isActive = activeNames.has(s.name);
+  const color = isActive ? '#ef4444' : '#10b981';
+  const circle = L.circleMarker([s.lat, s.lng], {
+    radius: isActive ? 9 : 6,
+    fillColor: color, color: color, weight: 2,
+    opacity: 1, fillOpacity: isActive ? 0.8 : 0.5,
+  }).addTo(map);
+  circle.bindPopup(`<strong>${s.name}</strong><br>${s.basin}${isActive ? '<br><span style="color:#ef4444">⚠ Anomaly Active</span>' : ''}`);
+});
+
+setTimeout(() => location.reload(), 300000); // auto-refresh 5 min
+</script>
+{% endblock %}
