@@ -1,201 +1,133 @@
-import { useMemo } from 'react'
-import {
-  Dialog, DialogTitle, DialogContent, IconButton, Box, Typography,
-  Chip, CircularProgress, Grid
-} from '@mui/material'
-import CloseIcon from '@mui/icons-material/Close'
-import {
-  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, ReferenceArea, Legend
-} from 'recharts'
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Chip, CircularProgress } from '@mui/material'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
-import { api, Station } from '../services/api'
-import { ALERT_COLORS, COLORS } from '../theme'
+import { Station } from '../services/api'
+import { api } from '../services/api'
+import { ALERT_COLORS, C } from '../theme'
 
 interface Props {
   station: Station | null
   onClose: () => void
 }
 
-function fmt(ts: string) {
+function fmtTs(ts: string) {
   const d = new Date(ts)
-  return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+  return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
 }
 
 export function StationDetailModal({ station, onClose }: Props) {
-  const open = Boolean(station)
-
   const { data, isLoading } = useQuery({
-    queryKey: ['station-history', station?.name],
+    queryKey: ['stationHistory', station?.name],
     queryFn: () => api.stationHistory(station!.name, 48),
-    enabled: open,
-    staleTime: 5 * 60 * 1000,
+    enabled: !!station,
   })
 
-  const { chartData, forecastData } = useMemo(() => {
-    const readings = data?.readings ?? []
-    if (!readings.length) return { chartData: [], forecastData: [] }
-
-    const history = readings.map(r => ({
-      ts: fmt(r.timestamp),
-      level: r.level_m,
-      forecast: undefined as number | undefined,
-    }))
-
-    // Project 6h forward from the last reading using current rate
-    const lastRate = station?.rate ?? 0
-    const lastLevel = readings[readings.length - 1]?.level_m ?? 0
-    const forecast = [
-      { ts: history[history.length - 1]?.ts ?? '', level: undefined, forecast: lastLevel },
-      { ts: '+2h', level: undefined, forecast: Math.max(0, lastLevel + lastRate * 2) },
-      { ts: '+4h', level: undefined, forecast: Math.max(0, lastLevel + lastRate * 4) },
-      { ts: '+6h', level: undefined, forecast: Math.max(0, lastLevel + lastRate * 6) },
-    ]
-
-    return { chartData: history, forecastData: forecast }
-  }, [data, station?.rate])
-
-  const combined = [...chartData, ...forecastData]
+  const readings = data?.readings ?? []
   const baseline = data?.baseline
-  const alertColor = station ? (ALERT_COLORS[station.alert_level] ?? COLORS.green) : COLORS.green
+  const chartData = readings.map(r => ({
+    t:     fmtTs(r.timestamp),
+    level: r.level_m,
+    rate:  r.rate,
+  }))
+
+  const color = station ? (ALERT_COLORS[station.alert_level] ?? C.green) : C.green
+
+  const tooltipStyle = {
+    background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(20px)',
+    border: `1px solid ${C.borderL}`, borderRadius: 12,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+  }
 
   return (
     <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{ sx: { bgcolor: '#0a0f1e', border: `1px solid ${COLORS.border}`, borderRadius: 3 } }}
+      open={!!station} onClose={onClose} maxWidth="md" fullWidth
+      PaperProps={{
+        sx: {
+          background: 'rgba(0,0,0,0.95)',
+          backdropFilter: 'blur(40px)',
+          border: `1px solid ${C.borderL}`,
+          borderRadius: 3,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.9)',
+        },
+      }}
     >
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{station?.name}</Typography>
-          <Typography variant="caption" color="text.secondary">{station?.basin}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {station && (
-            <Chip
-              label={station.alert_level}
-              size="small"
-              sx={{ bgcolor: `${alertColor}22`, color: alertColor, fontWeight: 700 }}
-            />
-          )}
-          <IconButton onClick={onClose} size="small"><CloseIcon fontSize="small" /></IconButton>
-        </Box>
-      </DialogTitle>
+      {station && (
+        <>
+          <DialogTitle sx={{ pb: 1, borderBottom: `1px solid ${C.borderS}` }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box>
+                <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: '#fff' }}>{station.name}</Typography>
+                <Typography sx={{ fontSize: '0.78rem', color: C.muted }}>{station.basin} basin</Typography>
+              </Box>
+              <Chip
+                label={station.alert_level}
+                size="small"
+                sx={{ bgcolor: `${color}18`, color, border: `1px solid ${color}30`, fontWeight: 700 }}
+              />
+            </Box>
+          </DialogTitle>
 
-      <DialogContent sx={{ pt: 0 }}>
-        {/* Stats row */}
-        {station && (
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={4}>
-              <Box sx={{ bgcolor: COLORS.surface, borderRadius: 2, p: 1.5, border: `1px solid ${COLORS.border}` }}>
-                <Typography variant="caption" color="text.secondary">Current Level</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {station.level_m != null ? `${station.level_m.toFixed(2)}m` : '—'}
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={4}>
-              <Box sx={{ bgcolor: COLORS.surface, borderRadius: 2, p: 1.5, border: `1px solid ${COLORS.border}` }}>
-                <Typography variant="caption" color="text.secondary">Rate of Rise</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700, color: station.rate > 0.05 ? COLORS.green : station.rate < -0.05 ? COLORS.red : 'text.primary' }}>
-                  {station.rate > 0 ? '↑' : station.rate < 0 ? '↓' : '→'} {Math.abs(station.rate).toFixed(3)} m/hr
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid item xs={4}>
-              <Box sx={{ bgcolor: COLORS.surface, borderRadius: 2, p: 1.5, border: `1px solid ${COLORS.border}` }}>
-                <Typography variant="caption" color="text.secondary">6h Forecast</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  {station.level_m != null
-                    ? `${Math.max(0, station.level_m + station.rate * 6).toFixed(2)}m`
-                    : '—'}
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-        )}
+          <DialogContent sx={{ pt: 3 }}>
+            {/* Current stats */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Current Level', value: station.level_m != null ? `${station.level_m.toFixed(3)} m` : '—', color: C.red },
+                { label: 'Rate of Change', value: station.rate != null ? `${station.rate >= 0 ? '+' : ''}${station.rate.toFixed(4)} m/hr` : '—', color: station.rate > 0 ? C.red : C.blue },
+                { label: 'Threshold', value: station.pct != null ? `${station.pct.toFixed(1)}%` : '—', color: C.amber },
+                ...(baseline ? [{ label: 'Baseline Avg', value: `${baseline.avg_level_m.toFixed(3)} m`, color: C.mutedHi }] : []),
+              ].map(stat => (
+                <Box key={stat.label} sx={{
+                  flex: '1 1 120px', p: 1.5, borderRadius: 2,
+                  background: C.glass, border: `1px solid ${C.borderS}`,
+                  backdropFilter: 'blur(10px)',
+                }}>
+                  <Typography sx={{ fontSize: '0.68rem', color: C.muted, textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}>
+                    {stat.label}
+                  </Typography>
+                  <Typography sx={{ fontSize: '1.1rem', fontWeight: 800, color: stat.color }}>
+                    {stat.value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
 
-        {/* Chart */}
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={32} />
-          </Box>
-        ) : combined.length === 0 ? (
-          <Box sx={{ py: 6, textAlign: 'center' }}>
-            <Typography color="text.secondary">No history data available from MCP server.</Typography>
-          </Box>
-        ) : (
-          <Box>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-              48h Water Level History {baseline ? '+ Seasonal Baseline Band (±2σ)' : ''}
+            {/* Chart */}
+            <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: C.mutedHi, mb: 1.5 }}>
+              48-hour water level
             </Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart data={combined} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
-                <XAxis dataKey="ts" tick={{ fill: COLORS.muted, fontSize: 11 }} interval="preserveStartEnd" />
-                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} tickFormatter={v => `${v}m`} domain={['auto', 'auto']} />
-                <Tooltip
-                  contentStyle={{ background: '#0d1117', border: `1px solid ${COLORS.border}`, borderRadius: 8 }}
-                  labelStyle={{ color: COLORS.muted }}
-                  formatter={(v: number, name: string) => [`${v?.toFixed(3)}m`, name]}
-                />
-                <Legend wrapperStyle={{ fontSize: 12, color: COLORS.muted }} />
-
-                {/* Baseline band */}
-                {baseline && (
-                  <ReferenceArea
-                    y1={Math.max(0, baseline.avg_level_m - 2 * baseline.stddev_level_m)}
-                    y2={baseline.avg_level_m + 2 * baseline.stddev_level_m}
-                    fill={COLORS.cyan}
-                    fillOpacity={0.08}
-                    ifOverflow="extendDomain"
-                  />
-                )}
-                {baseline && (
-                  <ReferenceLine
-                    y={baseline.avg_level_m}
-                    stroke={COLORS.cyan}
-                    strokeDasharray="6 3"
-                    label={{ value: 'Baseline avg', fill: COLORS.cyan, fontSize: 11, position: 'insideTopLeft' }}
-                  />
-                )}
-
-                {/* Historical level */}
-                <Area
-                  type="monotone"
-                  dataKey="level"
-                  name="Level (m)"
-                  stroke={alertColor}
-                  fill={`${alertColor}22`}
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls={false}
-                />
-
-                {/* 6h forecast */}
-                <Line
-                  type="monotone"
-                  dataKey="forecast"
-                  name="6h forecast"
-                  stroke={COLORS.amber}
-                  strokeWidth={2}
-                  strokeDasharray="5 4"
-                  dot={false}
-                  connectNulls
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-
-            {baseline && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                Cyan band: seasonal baseline ±2σ (week of year) · Dashed amber: linear 6h projection from current rate
-              </Typography>
+            {isLoading ? (
+              <Box sx={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CircularProgress size={32} sx={{ color: C.red }} />
+              </Box>
+            ) : chartData.length === 0 ? (
+              <Box sx={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography color="text.secondary" sx={{ fontSize: '0.85rem' }}>No history available</Typography>
+              </Box>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.borderS} />
+                  <XAxis dataKey="t" tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} unit="m" />
+                  {baseline && (
+                    <ReferenceLine y={baseline.avg_level_m} stroke={C.amber} strokeDasharray="4 4" strokeWidth={1.5}
+                      label={{ value: 'avg', fill: C.amber, fontSize: 10, position: 'right' }} />
+                  )}
+                  <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: '#fff' }} labelStyle={{ color: C.muted }} />
+                  <Line type="monotone" dataKey="level" name="Level (m)" stroke={color} strokeWidth={2}
+                    dot={false} activeDot={{ r: 4, fill: color }} />
+                </LineChart>
+              </ResponsiveContainer>
             )}
-          </Box>
-        )}
-      </DialogContent>
+          </DialogContent>
+
+          <DialogActions sx={{ borderTop: `1px solid ${C.borderS}`, px: 3, py: 2 }}>
+            <Button onClick={onClose} sx={{ color: C.muted, '&:hover': { color: '#fff', bgcolor: C.glass } }}>
+              Close
+            </Button>
+          </DialogActions>
+        </>
+      )}
     </Dialog>
   )
 }

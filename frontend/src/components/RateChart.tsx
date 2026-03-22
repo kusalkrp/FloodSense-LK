@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Cell, ReferenceLine, LabelList,
 } from 'recharts'
 import { Station } from '../services/api'
-import { COLORS } from '../theme'
+import { C } from '../theme'
 
 interface Props { stations: Station[] }
 
@@ -18,44 +18,62 @@ export function RateChart({ stations }: Props) {
       rate: +(s.rate ?? 0).toFixed(4),
     }))
 
+  const chartH = Math.max(280, data.length * 34 + 40)
+
+  const tooltipStyle = {
+    background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(20px)',
+    border: `1px solid ${C.borderL}`, borderRadius: 12,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+  }
+
   return (
-    <Paper sx={{ p: 2.5 }}>
-      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+    <Paper sx={{ p: 2.5, pt: 2, pb: 3, position: 'relative' }}>
+      <Typography variant="h6" sx={{ mb: 2.5, fontWeight: 700, fontSize: '0.92rem' }}>
         Rate of Rise / Fall
       </Typography>
       {data.length === 0 ? (
         <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography variant="body2" color="text.secondary">All stations stable</Typography>
+          <Typography color="text.secondary" sx={{ fontSize: '0.85rem' }}>All stations stable</Typography>
         </Box>
       ) : (
-        <ResponsiveContainer width="100%" height={Math.max(280, data.length * 32 + 40)}>
-          <BarChart data={data} layout="vertical" margin={{ top: 4, right: 64, left: 4, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} horizontal={false} />
+        <ResponsiveContainer width="100%" height={chartH}>
+          <BarChart data={data} layout="vertical" margin={{ top: 4, right: 68, left: -16, bottom: 4 }}>
+            <defs>
+              <linearGradient id="riseGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={C.red} stopOpacity={0.7} />
+                <stop offset="100%" stopColor={C.red} />
+              </linearGradient>
+              <linearGradient id="fallGrad" x1="1" y1="0" x2="0" y2="0">
+                <stop offset="0%" stopColor={C.blue} stopOpacity={0.7} />
+                <stop offset="100%" stopColor={C.blue} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.borderS} horizontal={false} vertical={true} />
             <XAxis
               type="number"
-              tick={{ fontSize: 11, fill: COLORS.muted }}
-              tickFormatter={v => `${v.toFixed(3)}`}
-              label={{ value: 'm/hr', position: 'insideBottomRight', offset: -4, fill: COLORS.muted, fontSize: 10 }}
+              tick={{ fontSize: 11, fill: C.muted }}
+              tickFormatter={v => `${v}`}
+              label={{ value: 'm/hr', position: 'insideBottomRight', offset: -4, fill: C.muted, fontSize: 10 }}
+              axisLine={false} tickLine={false}
             />
-            <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: COLORS.muted }} />
-            <ReferenceLine x={0} stroke={COLORS.border} strokeWidth={1.5} />
+            <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: '#fff', fontWeight: 500 }} axisLine={false} tickLine={false} />
+            <ReferenceLine x={0} stroke={C.borderL} strokeWidth={2} />
             <Tooltip
-              contentStyle={{ background: '#0d1117', border: `1px solid ${COLORS.border}`, borderRadius: 8 }}
-              labelStyle={{ color: COLORS.muted }}
-              formatter={(v: number) => [
-                `${v > 0 ? '↑' : '↓'} ${Math.abs(v).toFixed(4)} m/hr`,
-                'Rate',
-              ]}
+              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+              contentStyle={tooltipStyle}
+              itemStyle={{ color: '#fff', fontWeight: 600 }}
+              labelStyle={{ color: C.muted, marginBottom: 4 }}
+              formatter={(v: number) => [`${v.toFixed(4)} m/hr`, 'Rate']}
             />
-            <Bar dataKey="rate" radius={[0, 4, 4, 0]} maxBarSize={22}>
+            <Bar dataKey="rate" radius={[0, 6, 6, 0]} maxBarSize={14}>
               {data.map((entry, i) => (
-                <Cell key={i} fill={entry.rate > 0 ? '#10b981' : '#ef4444'} fillOpacity={0.85} />
+                <Cell key={i} fill={entry.rate > 0 ? 'url(#riseGrad)' : 'url(#fallGrad)'} />
               ))}
               <LabelList
                 dataKey="rate"
-                position="right"
-                formatter={(v: number) => `${v > 0 ? '+' : ''}${v.toFixed(3)}`}
-                style={{ fill: COLORS.muted, fontSize: 10 }}
+                position={data.some(d => d.rate < 0) ? 'top' : 'right'}
+                formatter={(v: number) => `${v.toFixed(4)}`}
+                style={{ fill: '#fff', fontSize: 11, fontWeight: 700 }}
               />
             </Bar>
           </BarChart>

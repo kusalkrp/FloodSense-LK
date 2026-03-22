@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Paper, Box, Typography } from '@mui/material'
+import { Box, Typography, Paper } from '@mui/material'
 import { Station } from '../services/api'
-import { ALERT_COLORS } from '../theme'
+import { ALERT_COLORS, C } from '../theme'
 
-const STATION_COORDS: Record<string, [number, number]> = {
+const COORDS: Record<string, [number, number]> = {
   "Norwood":[6.836,80.615],"Kithulgala":[6.989,80.413],"Deraniyagala":[6.924,80.337],
   "Glencourse":[6.977,80.173],"Holombuwa":[7.054,80.102],"Hanwella":[6.907,80.083],
   "Nagalagam Street":[6.930,79.865],"Rathnapura":[6.680,80.400],"Ellagawa":[6.618,80.283],
@@ -26,24 +26,21 @@ interface Props {
 }
 
 export function StationMap({ stations, onSelectStation }: Props) {
-  // mapReady triggers re-render (and re-run of the marker effect) once Leaflet initialises.
-  // Without this, if station data arrives before the dynamic import resolves, markers are
-  // never added because mapRef.current is still null when the stations effect first runs.
   const [mapReady, setMapReady] = useState(false)
-  const mapRef     = useRef<{ map: any; L: any } | null>(null)
-  const markersRef = useRef<any[]>([])
+  const mapRef      = useRef<{ map: any; L: any } | null>(null)
+  const markersRef  = useRef<any[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // ── Init Leaflet (once) ────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     let cancelled = false
     import('leaflet').then(L => {
       if (cancelled || !containerRef.current) return
-      const map = L.map(containerRef.current, { zoomControl: true }).setView([7.4, 80.7], 7)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© CartoDB', maxZoom: 18,
-      }).addTo(map)
+      const map = L.map(containerRef.current, {
+        zoomControl: true, attributionControl: false,
+        zoomAnimation: true,
+      }).setView([7.4, 80.7], 7)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map)
       mapRef.current = { map, L }
       setMapReady(true)
     })
@@ -57,58 +54,82 @@ export function StationMap({ stations, onSelectStation }: Props) {
     }
   }, [])
 
-  // ── Place / refresh markers whenever stations change OR map becomes ready ──
   useEffect(() => {
-    if (!mapRef.current || !stations.length) return
+    if (!mapRef.current || !mapReady || !stations.length) return
     const { map, L } = mapRef.current
-
-    // Remove old markers
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
 
     stations.forEach(st => {
-      const coords = STATION_COORDS[st.name]
+      const coords = COORDS[st.name]
       if (!coords) return
-
-      const color = st.stale ? '#6366f1' : (ALERT_COLORS[st.alert_level] ?? '#10b981')
-      const size  = st.alert_level !== 'NORMAL' ? 14 : 10
-      const icon  = L.divIcon({
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.5);box-shadow:0 0 8px ${color}80;cursor:pointer"></div>`,
+      const color   = st.stale ? '#4B5563' : (ALERT_COLORS[st.alert_level] ?? C.green)
+      const isAlert = st.alert_level !== 'NORMAL' && !st.stale
+      const size    = isAlert ? 14 : 10
+      const icon    = L.divIcon({
+        html: `<div style="
+          width:${size}px;height:${size}px;border-radius:50%;
+          background:${color};
+          border:2px solid ${isAlert ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)'};
+          box-shadow:0 0 ${isAlert ? 12 : 6}px ${color};
+          cursor:pointer;
+          transition:all 0.2s;
+        "></div>`,
         className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       })
-
-      const pct  = st.pct  != null ? `${st.pct.toFixed(1)}% of threshold` : ''
-      const rate = st.rate != null
-        ? `${st.rate > 0 ? '↑' : st.rate < 0 ? '↓' : '→'} ${Math.abs(st.rate).toFixed(3)} m/hr`
-        : ''
+      const lvl  = st.level_m != null ? `${st.level_m.toFixed(3)} m` : 'N/A'
+      const rate = st.rate    != null ? `${st.rate >= 0 ? '+' : ''}${st.rate.toFixed(4)} m/hr` : ''
       const popup = `
-        <div style="font-family:Inter,sans-serif;font-size:13px;min-width:160px;color:#e2e8f0;background:#0d1117;padding:4px;">
-          <strong style="font-size:14px;">${st.name}</strong><br>
-          <span style="color:#888">${st.basin}</span>
-          <hr style="border-color:#333;margin:4px 0">
-          Level: <strong>${st.level_m != null ? st.level_m.toFixed(2) + 'm' : '—'}</strong>${pct ? '<br>' + pct : ''}
-          ${rate ? '<br>Rate: ' + rate : ''}
-          <br>Status: <strong style="color:${color}">${st.alert_level}</strong>
-          ${st.stale ? '<br><span style="color:#f59e0b">⚠ Stale data</span>' : ''}
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;padding:12px;min-width:170px;">
+          <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:2px;">${st.name}</div>
+          <div style="font-size:11px;color:#6B7280;margin-bottom:8px;">${st.basin ?? ''}</div>
+          <div style="width:100%;height:1px;background:rgba(255,255,255,0.08);margin-bottom:8px;"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;color:#6B7280;">Level</span>
+            <span style="font-size:13px;font-weight:700;color:#fff;">${lvl}</span>
+          </div>
+          ${rate ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;color:#6B7280;">Rate</span>
+            <span style="font-size:11px;font-weight:600;color:${color};">${rate}</span>
+          </div>` : ''}
+          <div style="margin-top:8px;display:inline-block;padding:2px 8px;border-radius:6px;background:${color}20;border:1px solid ${color}40;color:${color};font-size:10px;font-weight:700;">
+            ${st.stale ? 'OFFLINE' : st.alert_level}
+          </div>
         </div>`
-
       const marker = L.marker(coords, { icon }).addTo(map)
-      marker.bindPopup(popup, { className: 'dark-popup' })
-      if (onSelectStation) {
-        marker.on('click', () => onSelectStation(st.name))
-      }
+      marker.bindPopup(popup, { className: '' })
+      if (onSelectStation) marker.on('click', () => onSelectStation(st.name))
       markersRef.current.push(marker)
     })
-  }, [stations, mapReady, onSelectStation])  // re-runs when map becomes ready
+  }, [stations, mapReady, onSelectStation])
+
+  const alertCount = stations.filter(s => s.alert_level !== 'NORMAL' && !s.stale).length
 
   return (
-    <Paper sx={{ p: 0, overflow: 'hidden', height: 420 }}>
-      <Box sx={{ p: 1.5, pb: 0 }}>
-        <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>
-          Station Map — {stations.length} stations
+    <Paper sx={{ overflow: 'hidden', height: 420, position: 'relative', p: 0 }}>
+      {/* Header overlay */}
+      <Box sx={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 900,
+        px: 2, py: 1.5,
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        pointerEvents: 'none',
+      }}>
+        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>
+          Station Map
         </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ px: 1, py: 0.3, borderRadius: '6px', bgcolor: `${C.green}18`, border: `1px solid ${C.green}30`, color: C.green, fontSize: '0.68rem', fontWeight: 700 }}>
+            {stations.filter(s => s.alert_level === 'NORMAL' && !s.stale).length} NORMAL
+          </Box>
+          {alertCount > 0 && (
+            <Box sx={{ px: 1, py: 0.3, borderRadius: '6px', bgcolor: `${C.red}18`, border: `1px solid ${C.red}30`, color: C.red, fontSize: '0.68rem', fontWeight: 700 }}>
+              {alertCount} ALERT
+            </Box>
+          )}
+        </Box>
       </Box>
-      <Box ref={containerRef} sx={{ height: 380, width: '100%' }} />
+      <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
     </Paper>
   )
 }

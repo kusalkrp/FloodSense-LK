@@ -1,19 +1,24 @@
 import { Chip } from '@mui/material'
-import { ALERT_COLORS } from '../theme'
+import { C } from '../theme'
+
+const CFG: Record<string, { color: string; label: string }> = {
+  LOW:      { color: C.blue,  label: 'Low' },
+  MEDIUM:   { color: C.amber, label: 'Medium' },
+  HIGH:     { color: '#FF6D00', label: 'High' },
+  CRITICAL: { color: C.red,   label: 'Critical' },
+}
 
 export function AlertBadge({ level }: { level: string }) {
-  const color = ALERT_COLORS[level] ?? '#6366f1'
-  const label = level.replace('_', ' ')
+  const cfg = CFG[level] ?? { color: C.muted, label: level }
   return (
     <Chip
-      label={label}
+      label={cfg.label}
       size="small"
       sx={{
-        bgcolor: `${color}20`,
-        color,
-        border: `1px solid ${color}40`,
-        fontWeight: 600,
-        fontSize: '0.7rem',
+        bgcolor: `${cfg.color}18`,
+        color: cfg.color,
+        border: `1px solid ${cfg.color}35`,
+        fontWeight: 700, fontSize: '0.7rem', height: 22,
       }}
     />
   )
