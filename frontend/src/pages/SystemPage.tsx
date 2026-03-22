@@ -2,6 +2,7 @@ import { Box, Typography, Paper, Grid, Chip } from '@mui/material'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { COLORS } from '../theme'
+import { PipelineHealthChart } from '../components/PipelineHealthChart'
 
 export function SystemPage() {
   const { data: statusData } = useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval: 15000 })
@@ -76,6 +77,10 @@ export function SystemPage() {
           ))}
         </Paper>
       )}
+
+      <Box sx={{ mb: 2 }}>
+        <PipelineHealthChart />
+      </Box>
 
       <Paper sx={{ p: 0, overflow: 'hidden' }}>
         <Box sx={{ p: 2, borderBottom: `1px solid ${COLORS.border}` }}>

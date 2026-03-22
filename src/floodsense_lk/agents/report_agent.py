@@ -88,7 +88,7 @@ async def _persist_run(state: FloodSenseState, summary: str, started_at: str) ->
     )
 
 
-async def _update_redis_dashboard(state: FloodSenseState) -> None:
+async def _update_redis_dashboard(state: FloodSenseState, summary: str) -> None:
     dashboard = {
         "run_id": state["run_id"],
         "updated_at": datetime.now(_SL_TZ).isoformat(),
@@ -135,7 +135,7 @@ async def _update_redis_dashboard(state: FloodSenseState) -> None:
 
     await redis_client.set_no_ttl(
         "floodsense:run:last_summary",
-        json.dumps({"summary": state["report_summary"], "run_id": state["run_id"]}),
+        json.dumps({"summary": summary, "run_id": state["run_id"]}),
     )
 
 
@@ -174,7 +174,7 @@ async def report_agent_node(state: FloodSenseState) -> FloodSenseState:
             logger.warning("risk_scores_write_failed", error=str(exc))
 
     try:
-        await _update_redis_dashboard(state)
+        await _update_redis_dashboard(state, summary)
         logger.info("dashboard_updated", run_id=state["run_id"])
     except Exception as exc:
         logger.warning("dashboard_update_failed", run_id=state["run_id"], error=str(exc))

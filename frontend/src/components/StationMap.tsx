@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Paper, Box, Typography } from '@mui/material'
 import { Station } from '../services/api'
 import { ALERT_COLORS } from '../theme'
@@ -20,56 +20,86 @@ const STATION_COORDS: Record<string, [number, number]> = {
   "Horowpothana":[8.217,80.717],
 }
 
-interface Props { stations: Station[] }
+interface Props {
+  stations: Station[]
+  onSelectStation?: (name: string) => void
+}
 
-export function StationMap({ stations }: Props) {
-  const mapRef = useRef<{ map: any; L: any } | null>(null)
+export function StationMap({ stations, onSelectStation }: Props) {
+  // mapReady triggers re-render (and re-run of the marker effect) once Leaflet initialises.
+  // Without this, if station data arrives before the dynamic import resolves, markers are
+  // never added because mapRef.current is still null when the stations effect first runs.
+  const [mapReady, setMapReady] = useState(false)
+  const mapRef     = useRef<{ map: any; L: any } | null>(null)
   const markersRef = useRef<any[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // ── Init Leaflet (once) ────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
+    let cancelled = false
     import('leaflet').then(L => {
-      const map = L.map(containerRef.current!, { zoomControl: true }).setView([7.4, 80.7], 7)
+      if (cancelled || !containerRef.current) return
+      const map = L.map(containerRef.current, { zoomControl: true }).setView([7.4, 80.7], 7)
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '© CartoDB', maxZoom: 18,
       }).addTo(map)
       mapRef.current = { map, L }
+      setMapReady(true)
     })
-    return () => { mapRef.current?.map.remove(); mapRef.current = null }
+    return () => {
+      cancelled = true
+      if (mapRef.current) {
+        mapRef.current.map.remove()
+        mapRef.current = null
+        setMapReady(false)
+      }
+    }
   }, [])
 
+  // ── Place / refresh markers whenever stations change OR map becomes ready ──
   useEffect(() => {
     if (!mapRef.current || !stations.length) return
     const { map, L } = mapRef.current
+
+    // Remove old markers
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
 
     stations.forEach(st => {
       const coords = STATION_COORDS[st.name]
       if (!coords) return
+
       const color = st.stale ? '#6366f1' : (ALERT_COLORS[st.alert_level] ?? '#10b981')
-      const size = st.alert_level !== 'NORMAL' ? 14 : 10
-      const icon = L.divIcon({
-        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.5);box-shadow:0 0 8px ${color}80;"></div>`,
-        className: '', iconSize: [size, size], iconAnchor: [size/2, size/2],
+      const size  = st.alert_level !== 'NORMAL' ? 14 : 10
+      const icon  = L.divIcon({
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.5);box-shadow:0 0 8px ${color}80;cursor:pointer"></div>`,
+        className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2],
       })
-      const pct = st.pct != null ? `${st.pct.toFixed(1)}% of threshold` : ''
-      const rate = st.rate != null ? `${st.rate > 0 ? '↑' : st.rate < 0 ? '↓' : '→'} ${Math.abs(st.rate).toFixed(3)} m/hr` : ''
-      const popup = `<div style="font-family:Inter,sans-serif;font-size:13px;min-width:160px;color:#e2e8f0;background:#0d1117;padding:4px;">
-        <strong style="font-size:14px;">${st.name}</strong><br>
-        <span style="color:#888">${st.basin}</span>
-        <hr style="border-color:#333;margin:4px 0">
-        Level: <strong>${st.level_m != null ? st.level_m.toFixed(2)+'m' : '—'}</strong>${pct ? '<br>'+pct : ''}
-        ${rate ? '<br>Rate: '+rate : ''}
-        <br>Status: <strong style="color:${color}">${st.alert_level}</strong>
-        ${st.stale ? '<br><span style="color:#f59e0b">⚠ Stale data</span>' : ''}
-      </div>`
+
+      const pct  = st.pct  != null ? `${st.pct.toFixed(1)}% of threshold` : ''
+      const rate = st.rate != null
+        ? `${st.rate > 0 ? '↑' : st.rate < 0 ? '↓' : '→'} ${Math.abs(st.rate).toFixed(3)} m/hr`
+        : ''
+      const popup = `
+        <div style="font-family:Inter,sans-serif;font-size:13px;min-width:160px;color:#e2e8f0;background:#0d1117;padding:4px;">
+          <strong style="font-size:14px;">${st.name}</strong><br>
+          <span style="color:#888">${st.basin}</span>
+          <hr style="border-color:#333;margin:4px 0">
+          Level: <strong>${st.level_m != null ? st.level_m.toFixed(2) + 'm' : '—'}</strong>${pct ? '<br>' + pct : ''}
+          ${rate ? '<br>Rate: ' + rate : ''}
+          <br>Status: <strong style="color:${color}">${st.alert_level}</strong>
+          ${st.stale ? '<br><span style="color:#f59e0b">⚠ Stale data</span>' : ''}
+        </div>`
+
       const marker = L.marker(coords, { icon }).addTo(map)
       marker.bindPopup(popup, { className: 'dark-popup' })
+      if (onSelectStation) {
+        marker.on('click', () => onSelectStation(st.name))
+      }
       markersRef.current.push(marker)
     })
-  }, [stations])
+  }, [stations, mapReady, onSelectStation])  // re-runs when map becomes ready
 
   return (
     <Paper sx={{ p: 0, overflow: 'hidden', height: 420 }}>

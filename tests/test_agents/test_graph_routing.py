@@ -1,7 +1,7 @@
 """Tests for LangGraph conditional routing logic."""
 
 import pytest
-from floodsense_lk.agents.graph import after_monitor_router, after_risk_router
+from floodsense_lk.agents.graph import after_monitor_router
 from floodsense_lk.agents.state import FloodSenseState
 
 
@@ -52,40 +52,3 @@ def test_after_monitor_both_present_triggers_anomaly():
         alert_stations=[{"station_name": "Glencourse"}],
     )
     assert after_monitor_router(state) == "run_anomaly"
-
-
-# ── after_risk_router ──────────────────────────────────────────────────────────
-
-def test_after_risk_no_high_risk():
-    state = _make_state(risk_assessments=[
-        {"station": "Hanwella", "risk_score": 45, "should_alert": False},
-        {"station": "Glencourse", "risk_score": 30, "should_alert": False},
-    ])
-    assert after_risk_router(state) == "report_only"
-
-
-def test_after_risk_one_above_threshold():
-    state = _make_state(risk_assessments=[
-        {"station": "Hanwella", "risk_score": 72, "should_alert": True},
-        {"station": "Glencourse", "risk_score": 30, "should_alert": False},
-    ])
-    assert after_risk_router(state) == "run_alerts"
-
-
-def test_after_risk_exactly_at_threshold():
-    state = _make_state(risk_assessments=[
-        {"station": "Hanwella", "risk_score": 61, "should_alert": True},
-    ])
-    assert after_risk_router(state) == "run_alerts"
-
-
-def test_after_risk_just_below_threshold():
-    state = _make_state(risk_assessments=[
-        {"station": "Hanwella", "risk_score": 60, "should_alert": False},
-    ])
-    assert after_risk_router(state) == "report_only"
-
-
-def test_after_risk_empty_assessments():
-    state = _make_state(risk_assessments=[])
-    assert after_risk_router(state) == "report_only"

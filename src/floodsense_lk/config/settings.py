@@ -25,20 +25,8 @@ class Settings(BaseSettings):
     gemini_temperature: float = Field(default=0.1)
     gemini_max_tokens: int = Field(default=1024)
 
-    # Twilio
-    twilio_account_sid: str = Field(default="")
-    twilio_auth_token: str = Field(default="")
-    twilio_whatsapp_from: str = Field(default="whatsapp:+14155238886")
-
-    # Alert delivery flags — all off locally
-    enable_whatsapp_alerts: bool = Field(default=False)
-    enable_sms_alerts: bool = Field(default=False)
-    enable_email_alerts: bool = Field(default=False)
-
     # Security
-    alert_salt: str = Field(default="")
     admin_api_key: str = Field(default="")
-    phone_encryption_key: str = Field(default="")
 
     # Pipeline
     pipeline_interval_seconds: int = Field(default=1800)
@@ -59,12 +47,8 @@ class Settings(BaseSettings):
     def warn_insecure_defaults(self) -> "Settings":
         if "changeme" in self.postgres_dsn:
             _log.warning("SECURITY WARNING: default DB password in use — set POSTGRES_DSN in .env.local")
-        if not self.alert_salt:
-            _log.warning("SECURITY WARNING: ALERT_SALT not set — subscriber hashing is insecure")
         if not self.admin_api_key:
             _log.warning("SECURITY WARNING: ADMIN_API_KEY not set — /admin routes unprotected")
-        if not self.phone_encryption_key:
-            _log.warning("SECURITY WARNING: PHONE_ENCRYPTION_KEY not set — phone encryption will fail")
         return self
 
 

@@ -47,6 +47,30 @@ export interface Basin {
   highest_alert: string
 }
 
+export interface StationHistoryPoint {
+  timestamp: string
+  level_m: number
+  rate: number
+}
+
+export interface StationBaseline {
+  avg_level_m: number
+  stddev_level_m: number
+  avg_rate_m_per_hr: number
+}
+
+export interface PipelineRun {
+  started_at: string
+  completed_at: string | null
+  duration_ms: number | null
+  status: string
+  monitoring_intensity: string
+  routing_decision: string | null
+  stations_checked: number | null
+  rising_count: number | null
+  anomalies_found: number | null
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`)
@@ -59,4 +83,10 @@ export const api = {
   alerts: (hours = 24, severity = '', basin = '') =>
     get<{ alerts: AlertEvent[] }>(`/alerts?hours=${hours}&severity=${severity}&basin=${encodeURIComponent(basin)}`),
   basins: () => get<{ basins: Basin[] }>('/basins'),
+  stationHistory: (name: string, hours = 48) =>
+    get<{ station_name: string; hours: number; readings: StationHistoryPoint[]; baseline: StationBaseline | null }>(
+      `/stations/${encodeURIComponent(name)}/history?hours=${hours}`
+    ),
+  pipelineRuns: (limit = 20) =>
+    get<{ runs: PipelineRun[] }>(`/pipeline/runs?limit=${limit}`),
 }

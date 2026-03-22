@@ -118,7 +118,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {drawer}
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, ml: { md: `${DRAWER_WIDTH}px` }, mt: '64px', p: 3, minHeight: '100vh' }}>
+      <Box component="main" sx={{ flexGrow: 1, ml: { md: `${DRAWER_WIDTH}px` }, mt: '64px', px: 2.5, pt: 1.5, pb: 3, minHeight: '100vh' }}>
         {children}
       </Box>
     </>

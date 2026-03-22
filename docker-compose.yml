@@ -3,19 +3,16 @@ services:
   timescaledb:
     image: timescale/timescaledb:2.15.3-pg15
     container_name: floodsense_timescaledb
-    env_file:
-      - .env.local
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: floodsense_lk
+      POSTGRES_USER: floodsense_user
+      POSTGRES_PASSWORD: changeme_in_local
     volumes:
       - timescale_data:/var/lib/postgresql/data
-      - ./src/floodsense_lk/db/migrations:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"    # offset — avoids conflict with mcp-lk-river-intel on 5432
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U floodsense_user -d floodsense_lk"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -40,7 +37,8 @@ services:
     env_file:
       - .env.local
     environment:
-      POSTGRES_DSN: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}
+      # Override DSN to use internal Docker service hostname
+      POSTGRES_DSN: postgresql+asyncpg://floodsense_user:changeme_in_local@timescaledb:5432/floodsense_lk
       REDIS_URL: redis://redis:6379
       MCP_SERVER_URL: http://host.docker.internal:8765
     ports:
@@ -53,7 +51,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"    # reach MCP server on host
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5

@@ -37,7 +37,12 @@ async def get_alerts(
     rows = await timescale.fetch(
         f"""
         SELECT id, station_name, basin_name, detected_at, anomaly_type,
-               severity, z_score, rate_spike_ratio, explanation, confidence, risk_score
+               severity,
+               z_score::FLOAT          AS z_score,
+               rate_spike_ratio::FLOAT AS rate_spike_ratio,
+               explanation,
+               confidence::FLOAT       AS confidence,
+               risk_score
         FROM anomaly_events
         WHERE {where}
         ORDER BY detected_at DESC

@@ -27,8 +27,8 @@ export function AlertsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Anomaly Events</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>Anomaly Events</Typography>
         <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time window</InputLabel>

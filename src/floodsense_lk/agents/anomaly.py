@@ -87,8 +87,24 @@ def _upstream_status(corridor_warnings: list[dict], station_name: str) -> str:
 _DEDUP_WINDOW_HOURS = 2  # suppress re-insertion of the same anomaly type within this window
 
 
+_VALID_ANOMALY_TYPES = {
+    "RATE_SPIKE", "LEVEL_ANOMALY", "SEASONAL_DEVIATION",
+    "UPSTREAM_PROPAGATION", "COMPOUND_BASIN",
+}
+
+
+def _sanitize_anomaly_type(raw: str) -> str:
+    """Gemini sometimes returns compound types like 'RATE_SPIKE|COMPOUND_BASIN'.
+    Take the first valid token; fall back to LEVEL_ANOMALY."""
+    for token in raw.replace(",", "|").split("|"):
+        candidate = token.strip()
+        if candidate in _VALID_ANOMALY_TYPES:
+            return candidate
+    return "LEVEL_ANOMALY"
+
+
 async def _persist_anomaly(station_name: str, basin_name: str, data: dict, run_id: str) -> int | None:
-    anomaly_type = data.get("anomaly_type", "LEVEL_ANOMALY")
+    anomaly_type = _sanitize_anomaly_type(data.get("anomaly_type", "LEVEL_ANOMALY"))
     try:
         # Dedup: skip if identical (station, type) already exists within the last N hours
         existing = await timescale.fetchrow(

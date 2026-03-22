@@ -27,7 +27,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from floodsense_lk.api.middleware import limiter
-from floodsense_lk.api.routes import admin, alerts, dashboard, status, subscribe
+from floodsense_lk.api.routes import admin, alerts, status
 from floodsense_lk.config.settings import settings
 from floodsense_lk.core.logging import configure_logging
 from floodsense_lk.db import redis_client, timescale
@@ -99,11 +99,9 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # Routers
-app.include_router(subscribe.router)
 app.include_router(alerts.router)
 app.include_router(status.router)
 app.include_router(admin.router)
-app.include_router(dashboard.router)
 
 
 @app.get("/health", tags=["system"])
@@ -113,17 +111,19 @@ async def health() -> dict:
 
 # Serve React SPA — must be last
 _FRONTEND_DIST = pathlib.Path(__file__).parent.parent.parent / "frontend" / "dist"
-if _FRONTEND_DIST.exists():
+_SPA_INDEX = _FRONTEND_DIST / "index.html"
+
+if (_FRONTEND_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIST / "assets")), name="frontend-assets")
 
-    @app.get("/", include_in_schema=False)
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str = "") -> JSONResponse:
-        index = _FRONTEND_DIST / "index.html"
-        if index.exists():
-            from fastapi.responses import FileResponse
-            return FileResponse(str(index))
-        return JSONResponse({"error": "frontend not built"}, status_code=404)
+
+@app.get("/", include_in_schema=False)
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str = "") -> JSONResponse:
+    from fastapi.responses import FileResponse
+    if _SPA_INDEX.exists():
+        return FileResponse(str(_SPA_INDEX))
+    return JSONResponse({"error": "frontend not built — run: cd frontend && npm run build"}, status_code=503)
 
 
 # ── Entrypoint ─────────────────────────────────────────────────────────────────

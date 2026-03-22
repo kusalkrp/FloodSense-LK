@@ -7,9 +7,14 @@ import { Station } from '../services/api'
 import { ALERT_COLORS, COLORS } from '../theme'
 import { AlertBadge } from './AlertBadge'
 
-interface Props { stations: Station[]; title?: string; limit?: number }
+interface Props {
+  stations: Station[]
+  title?: string
+  limit?: number
+  onSelectStation?: (name: string) => void
+}
 
-export function StationsTable({ stations, title = 'All Stations', limit }: Props) {
+export function StationsTable({ stations, title = 'All Stations', limit, onSelectStation }: Props) {
   const rows = limit ? stations.slice(0, limit) : stations
 
   return (
@@ -32,7 +37,14 @@ export function StationsTable({ stations, title = 'All Stations', limit }: Props
               const color = ALERT_COLORS[s.alert_level] ?? COLORS.green
               const pct = Math.min(s.pct ?? 0, 100)
               return (
-                <TableRow key={s.name} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+                <TableRow
+                  key={s.name}
+                  onClick={() => onSelectStation?.(s.name)}
+                  sx={{
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                    cursor: onSelectStation ? 'pointer' : 'default',
+                  }}
+                >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       {s.stale && (
