@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Alerts — FloodSense LK{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem;">
+  <h1 style="font-size:1.4rem; font-weight:700;">Anomaly Events</h1>
+  <form method="get" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <select name="hours" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.85rem;">
+      {% for h in [6, 24, 48, 168] %}
+      <option value="{{ h }}" {% if hours == h %}selected{% endif %}>Last {{ h }}h</option>
+      {% endfor %}
+    </select>
+    <select name="severity" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.85rem;">
+      <option value="">All severities</option>
+      {% for s in ['LOW','MEDIUM','HIGH','CRITICAL'] %}
+      <option value="{{ s }}" {% if severity == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <input name="basin" placeholder="Filter by basin…" value="{{ basin or '' }}"
+      style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:0.85rem;width:180px;">
+    <button type="submit" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 14px;cursor:pointer;font-size:0.85rem;">Filter</button>
+  </form>
+</div>
+
+<div class="card">
+  {% if alerts %}
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th><th>Station</th><th>Basin</th><th>Type</th>
+        <th>Severity</th><th>Z-score</th><th>Rate×</th><th>Explanation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in alerts %}
+      <tr>
+        <td style="color:var(--muted);white-space:nowrap;font-size:0.8rem;">{{ a.detected_at.strftime('%Y-%m-%d %H:%M') if a.detected_at else '—' }}</td>
+        <td><strong>{{ a.station_name }}</strong></td>
+        <td style="color:var(--muted);">{{ a.basin_name or '—' }}</td>
+        <td style="font-size:0.8rem;">{{ a.anomaly_type }}</td>
+        <td><span class="badge badge-{{ a.severity|lower }}">{{ a.severity }}</span></td>
+        <td>{{ '%.2f'|format(a.z_score) if a.z_score is not none else '—' }}</td>
+        <td>{{ '%.1fx'|format(a.rate_spike_ratio) if a.rate_spike_ratio is not none else '—' }}</td>
+        <td style="font-size:0.8rem;color:var(--muted);max-width:280px;">{{ a.explanation or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);text-align:center;padding:2rem;">No anomaly events found.</p>
+  {% endif %}
+</div>
+
+<p class="refresh-note">Showing {{ alerts|length }} events</p>
+{% endblock %}

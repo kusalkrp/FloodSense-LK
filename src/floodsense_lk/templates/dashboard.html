@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — FloodSense LK{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  #map { height: 480px; border-radius: 8px; border: 1px solid var(--border); background: #1a1f2e; }
+  .anomaly-banner {
+    background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 0.5rem;
+    display: flex; align-items: flex-start; gap: 0.75rem;
+  }
+  .anomaly-banner.severity-MEDIUM { background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.25); }
+  .anomaly-banner.severity-LOW    { background: rgba(99,102,241,0.10); border-color: rgba(99,102,241,0.25); }
+  .anomaly-banner .sev-label { font-weight: 700; min-width: 70px; font-size: 0.8rem; padding-top: 2px; }
+  .intensity-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 14px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600;
+  }
+  .intensity-STANDARD   { background: rgba(16,185,129,0.15);  color: #10b981; }
+  .intensity-ELEVATED   { background: rgba(245,158,11,0.15);  color: #f59e0b; }
+  .intensity-HIGH_ALERT { background: rgba(239,68,68,0.18);   color: #ef4444; }
+  .stat-delta { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+  .map-legend { display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.75rem; font-size:0.78rem; color:var(--muted); align-items:center; }
+  .legend-dot { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem;">
+  <div>
+    <h1 style="font-size:1.4rem; font-weight:700;">Sri Lanka River Monitor</h1>
+    <p style="color:var(--muted); font-size:0.82rem; margin-top:2px;">
+      Last run: {{ dashboard.updated_at or 'No data yet' }}
+    </p>
+  </div>
+  <div style="display:flex; align-items:center; gap:0.75rem;">
+    <span class="intensity-badge intensity-{{ dashboard.monitoring_intensity or 'STANDARD' }}">
+      ● {{ dashboard.monitoring_intensity or 'STANDARD' }}
+    </span>
+    <button onclick="location.reload()" style="background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem;">↻ Refresh</button>
+  </div>
+</div>
+
+<!-- Stat cards -->
+<div class="grid-3" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="stat-value">{{ dashboard.stations_total or 0 }}</div>
+    <div class="stat-label">Stations Monitored</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--amber)">{{ dashboard.stations_rising or 0 }}</div>
+    <div class="stat-label">Rising Now</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--red)">{{ dashboard.stations_alert or 0 }}</div>
+    <div class="stat-label">At Alert Level</div>
+  </div>
+  <div class="card">
+    <div class="stat-value" style="color:var(--accent)">{{ dashboard.anomalies_active or 0 }}</div>
+    <div class="stat-label">Active Anomalies</div>
+  </div>
+</div>
+
+<!-- Active anomaly banners -->
+{% if active_anomalies %}
+<div class="section">
+  <h2>Active Anomalies ({{ active_anomalies|length }})</h2>
+  {% for a in active_anomalies %}
+  <div class="anomaly-banner severity-{{ a.severity or 'HIGH' }}">
+    <span class="badge badge-{{ (a.severity or 'high')|lower }} sev-label">{{ a.severity or 'HIGH' }}</span>
+    <div style="flex:1; min-width:0;">
+      <div style="font-weight:600;">{{ a.station_name }} <span style="color:var(--muted); font-weight:400; font-size:0.85rem;">— {{ a.basin_name }}</span></div>
+      <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
+        {{ a.anomaly_type }}
+        {% if a.current_level_m %} · {{ '%.2f'|format(a.current_level_m) }}m{% endif %}
+        {% if a.rate_of_rise and a.rate_of_rise != 0 %} · {% if a.rate_of_rise > 0 %}↑{% else %}↓{% endif %} {{ '%.3f'|format(a.rate_of_rise|abs) }} m/hr{% endif %}
+      </div>
+      <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">{{ a.explanation or '' }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Errors (if any) -->
+{% if dashboard.errors %}
+<div class="section">
+  {% for e in dashboard.errors %}
+  <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:0.4rem;font-size:0.78rem;color:var(--amber);">
+    ⚠ {{ e }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Map -->
+<div class="card section">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+    <h2 style="margin-bottom:0;">Station Map — {{ dashboard.stations_total or 0 }} stations</h2>
+    <span id="map-status" style="font-size:0.78rem; color:var(--muted);">Loading…</span>
+  </div>
+  <div id="map"></div>
+  <div class="map-legend">
+    <span><span class="legend-dot" style="background:#10b981;"></span>Normal</span>
+    <span><span class="legend-dot" style="background:#f59e0b;"></span>Alert</span>
+    <span><span class="legend-dot" style="background:#f97316;"></span>Minor Flood</span>
+    <span><span class="legend-dot" style="background:#ef4444;"></span>Major Flood</span>
+    <span><span class="legend-dot" style="background:#6366f1; opacity:0.6;"></span>No recent data</span>
+    <span style="margin-left:auto; font-size:0.75rem;">Auto-refreshes every 5 min</span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// All 40 Sri Lanka gauging stations with approximate coordinates
+const STATION_COORDS = {
+  // Kelani Ganga
+  "Norwood":           [6.836,  80.615],
+  "Kithulgala":        [6.989,  80.413],
+  "Deraniyagala":      [6.924,  80.337],
+  "Glencourse":        [6.977,  80.173],
+  "Holombuwa":         [7.054,  80.102],
+  "Hanwella":          [6.907,  80.083],
+  "Nagalagam Street":  [6.930,  79.865],
+  // Kalu Ganga
+  "Rathnapura":        [6.680,  80.400],
+  "Ellagawa":          [6.618,  80.283],
+  "Putupaula":         [6.725,  80.330],
+  "Magura":            [6.550,  80.317],
+  "Kalawellawa (Millakanda)": [6.420, 80.530],
+  // Mahaweli Ganga
+  "Nawalapitiya":      [7.058,  80.535],
+  "Peradeniya":        [7.268,  80.597],
+  "Thaldena":          [7.350,  80.867],
+  "Weraganthota":      [7.635,  80.967],
+  "Manampitiya":       [7.897,  81.007],
+  // Nilwala Ganga
+  "Pitabeddara":       [6.048,  80.540],
+  "Panadugama":        [6.067,  80.550],
+  "Thalgahagoda":      [6.100,  80.650],
+  "Urawa":             [6.233,  80.633],
+  // Gin Ganga
+  "Thawalama":         [6.147,  80.343],
+  "Baddegama":         [6.183,  80.200],
+  // Walawe Ganga
+  "Moraketiya":        [6.317,  80.900],
+  // Maha Oya
+  "Giriulla":          [7.333,  80.133],
+  "Badalgama":         [7.483,  79.950],
+  // Aththanagalu Oya
+  "Dunamale":          [7.304,  80.170],
+  // Malwathu Oya
+  "Thanthirimale":     [8.467,  80.483],
+  // Mee Oya
+  "Galgamuwa":         [8.007,  80.267],
+  // Deduru Oya
+  "Moragaswewa":       [7.927,  80.457],
+  // Kirindi Oya
+  "Wellawaya":         [6.733,  81.100],
+  "Kuda Oya":          [6.483,  81.117],
+  "Thanamalwila":      [6.297,  81.035],
+  // Kumbukkan Oya
+  "Nakkala":           [6.750,  81.450],
+  // Ma Oya
+  "Yaka Wewa":         [8.217,  80.200],
+  // Maduru Oya
+  "Padiyathalawa":     [7.817,  81.267],
+  // Gal Oya
+  "Ampara":            [7.299,  81.672],
+  // Heda Oya
+  "Siyambalanduwa":    [7.022,  81.486],
+  // Menik Ganga
+  "Katharagama":       [6.414,  81.333],
+  // Yan Oya
+  "Horowpothana":      [8.217,  80.717],
+};
+
+const ALERT_COLORS = {
+  "NORMAL":      "#10b981",
+  "ALERT":       "#f59e0b",
+  "MINOR_FLOOD": "#f97316",
+  "MAJOR_FLOOD": "#ef4444",
+};
+
+// Init map
+const map = L.map('map').setView([7.4, 80.7], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+// Fallback: also try CartoDB dark if OSM fails
+const markers = {};
+
+function makeIcon(color, size) {
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,0.6);box-shadow:0 0 6px ${color}80;"></div>`,
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+  });
+}
+
+function popupHtml(st) {
+  const level = st.level_m != null ? st.level_m.toFixed(2) + ' m' : '—';
+  const pct   = st.pct   != null ? st.pct.toFixed(1) + '% of alert threshold' : '';
+  const rate  = st.rate  != null ? (st.rate > 0 ? '↑' : st.rate < 0 ? '↓' : '→') + ' ' + Math.abs(st.rate).toFixed(3) + ' m/hr' : '';
+  const stale = st.stale ? '<br><span style="color:#f59e0b">⚠ Data may be stale (&gt;45 min)</span>' : '';
+  return `<div style="min-width:160px; font-family:system-ui; font-size:13px;">
+    <strong style="font-size:14px;">${st.name}</strong><br>
+    <span style="color:#888;">${st.basin}</span><br>
+    <hr style="border:none;border-top:1px solid #333;margin:4px 0;">
+    Level: <strong>${level}</strong>${pct ? '<br>' + pct : ''}
+    ${rate ? '<br>Rate: ' + rate : ''}
+    <br>Status: <strong style="color:${ALERT_COLORS[st.alert_level] || '#10b981'}">${st.alert_level}</strong>
+    ${stale}
+  </div>`;
+}
+
+async function loadStations() {
+  try {
+    const res = await fetch('/api/v1/stations/current');
+    const data = await res.json();
+    const stations = data.stations || [];
+
+    let loaded = 0;
+    stations.forEach(st => {
+      const coords = STATION_COORDS[st.name];
+      if (!coords) return;
+      loaded++;
+
+      const color  = ALERT_COLORS[st.alert_level] || '#10b981';
+      const isAlert = st.alert_level !== 'NORMAL';
+      const size   = isAlert ? 14 : 10;
+
+      const m = L.marker(coords, { icon: makeIcon(color, size) }).addTo(map);
+      m.bindPopup(popupHtml(st));
+      markers[st.name] = m;
+    });
+
+    // Plot any stations with known coords but missing from live data
+    Object.entries(STATION_COORDS).forEach(([name, coords]) => {
+      if (!markers[name]) {
+        const m = L.marker(coords, { icon: makeIcon('#6366f1', 8) }).addTo(map);
+        m.bindPopup(`<strong>${name}</strong><br><span style="color:#888">No recent data</span>`);
+      }
+    });
+
+    document.getElementById('map-status').textContent =
+      loaded + ' stations loaded' + (stations.length > loaded ? ` (${stations.length - loaded} missing coords)` : '');
+  } catch(e) {
+    document.getElementById('map-status').textContent = 'Could not load station data';
+    // Still plot all known stations as grey
+    Object.entries(STATION_COORDS).forEach(([name, coords]) => {
+      L.marker(coords, { icon: makeIcon('#6366f1', 8) }).addTo(map)
+        .bindPopup(`<strong>${name}</strong>`);
+    });
+  }
+}
+
+loadStations();
+setTimeout(() => location.reload(), 300000);
+</script>
+{% endblock %}

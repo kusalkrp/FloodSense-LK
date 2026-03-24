@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}System Health — FloodSense LK{% endblock %}
+
+{% block content %}
+<h1 style="font-size:1.4rem; font-weight:700; margin-bottom:1.25rem;">System Health</h1>
+
+<div class="grid-3" style="margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="stat-label">Last Run</div>
+    <div style="margin-top:8px; font-size:0.9rem;">{{ last_run.started_at if last_run else 'No runs yet' }}</div>
+    {% if last_run %}
+    <span class="badge {% if last_run.status == 'COMPLETED' %}badge-normal{% else %}badge-high{% endif %}" style="margin-top:8px;">
+      {{ last_run.status }}
+    </span>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="stat-label">Total Pipeline Runs</div>
+    <div class="stat-value">{{ total_runs }}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Anomalies (last 24h)</div>
+    <div class="stat-value" style="color:var(--amber)">{{ anomaly_count_24h }}</div>
+  </div>
+</div>
+
+<div class="card section">
+  <h2>Recent Pipeline Runs</h2>
+  {% if runs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Run ID</th><th>Started</th><th>Status</th><th>Intensity</th>
+        <th>Routing</th><th>Stations</th><th>Anomalies</th><th>Alerts Sent</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td style="font-family:monospace;font-size:0.8rem;">{{ r.run_id }}</td>
+        <td style="color:var(--muted);font-size:0.8rem;white-space:nowrap;">{{ r.started_at.strftime('%m-%d %H:%M') if r.started_at else '—' }}</td>
+        <td><span class="badge {% if r.status == 'COMPLETED' %}badge-normal{% elif r.status == 'FAILED' %}badge-high{% else %}badge-medium{% endif %}">{{ r.status }}</span></td>
+        <td style="font-size:0.8rem;">{{ r.monitoring_intensity or '—' }}</td>
+        <td style="font-size:0.75rem;color:var(--muted);">{{ r.routing_decision or '—' }}</td>
+        <td>{{ r.stations_checked or 0 }}</td>
+        <td>{{ r.anomalies_found or 0 }}</td>
+        <td>{{ r.alerts_sent or 0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--muted);text-align:center;padding:2rem;">No pipeline runs yet.</p>
+  {% endif %}
+</div>
+
+{% if stale_stations %}
+<div class="card" style="border-color:rgba(245,158,11,0.3); margin-bottom:1rem;">
+  <h2 style="color:var(--amber);">Offline Gauges ({{ stale_stations|length }})</h2>
+  <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">No data received from ArcGIS in the last 70 minutes. Likely telemetry outages at the gauge site.</p>
+  <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+    {% for s in stale_stations %}
+    <span class="badge badge-medium">{{ s }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if last_run and last_run.error_message %}
+<div class="card" style="border-color:rgba(239,68,68,0.3);">
+  <h2 style="color:var(--red);">Last Run Errors</h2>
+  <pre style="font-size:0.8rem;color:var(--muted);white-space:pre-wrap;">{{ last_run.error_message }}</pre>
+</div>
+{% endif %}
+{% endblock %}
